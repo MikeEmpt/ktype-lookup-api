@@ -1,50 +1,65 @@
 const express = require('express');
-const fetch = require('node-fetch');
-require('dotenv').config();
+const axios = require('axios');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const port = process.env.PORT || 3000;
 
-app.get('/ktype/:id', async (req, res) => {
-  const ktype = req.params.id;
-  const shop = process.env.SHOPIFY_STORE_DOMAIN;
-  const token = process.env.SHOPIFY_ACCESS_TOKEN;
+// Shopify store domain and token from Vercel environment variables
+const SHOPIFY_STORE_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
+const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
+
+// Lookup route: /ktype/:ktype
+app.get('/ktype/:ktype', async (req, res) => {
+  const ktype = req.params.ktype;
 
   try {
-    const query = `
-    {
-      products(first: 50, query: "metafield:fitment.ktype:*${ktype}*") {
-        edges {
-          node {
-            id
-            title
-            handle
-            metafields(identifiers: [{namespace: "fitment", key: "ktype"}]) {
-              value
+    const response = await axios.post(
+      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-04/graphql.json`,
+      {
+        query: `
+          {
+            products(first: 10, query: "metafield:fitment.ktype:*${ktype}*") {
+              edges {
+                node {
+                  id
+                  title
+                  handle
+                  metafields(first: 5, namespace: "fitment", keys: ["ktype"]) {
+                    edges {
+                      node {
+                        key
+                        value
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
+        `
+      },
+      {
+        headers: {
+          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+          'Content-Type': 'application/json',
         }
       }
-    }`;
+    );
 
-    const response = await fetch(`https://${shop}/admin/api/2024-07/graphql.json`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': token
-      },
-      body: JSON.stringify({ query })
-    });
+    const products = response.data.data.products.edges.map(edge => edge.node);
+    res.json({ products });
 
-    const data = await response.json();
-    res.json(data.data.products.edges.map(edge => edge.node));
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Error fetching products');
+  } catch (error) {
+    console.error('Shopify error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to fetch from Shopify' });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// Root
+app.get('/', (req, res) => {
+  res.send('K-Type Lookup API is running');
 });
 
+app.listen(port, () => {
+  console.log(`Server is listening on port ${port}`);
+});
