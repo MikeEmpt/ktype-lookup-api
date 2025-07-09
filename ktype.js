@@ -11,41 +11,19 @@ const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 // Lookup route: /ktype/:ktype
 app.get('/ktype/:ktype', async (req, res) => {
   const ktype = req.params.ktype;
+try {
+  const response = await axios.get(`${shopifyStore}/admin/api/2023-04/products.json?metafield_key=fitment.ktype&metafield_value=${ktype}`, {
+    headers: {
+      "X-Shopify-Access-Token": shopifyToken,
+      "Content-Type": "application/json"
+    }
+  });
 
-  try {
-    const response = await axios.post(
-      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-04/graphql.json`,
-      {
-        query: `
-          {
-            products(first: 10, query: "metafield:fitment.ktype:*${ktype}*") {
-              edges {
-                node {
-                  id
-                  title
-                  handle
-                  metafields(first: 5, namespace: "fitment", keys: ["ktype"]) {
-                    edges {
-                      node {
-                        key
-                        value
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        `
-      },
-      {
-        headers: {
-          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-          'Content-Type': 'application/json',
-        }
-      }
-    );
-
+  return res.status(200).json(response.data);
+} catch (error) {
+  console.error('API ERROR:', error.response?.data || error.message || error);
+  return res.status(500).json({ error: "Error fetching products", details: error.message });
+}
     const products = response.data.data.products.edges.map(edge => edge.node);
     res.json({ products });
 
