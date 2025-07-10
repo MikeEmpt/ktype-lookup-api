@@ -1,55 +1,71 @@
+const express = require('express');
 const axios = require('axios');
 
-module.exports = async (req, res) => {
-  const { ktype } = req.query;
+const app = express();
+const port = process.env.PORT || 3000;
 
-  const SHOPIFY_STORE_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
-  const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
+// Environment variables
+const SHOPIFY_STORE_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
+const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 
-  if (!ktype) {
-    return res.status(400).json({ error: 'Missing ktype parameter' });
-  }
+// Test route
+app.get('/', (req, res) => {
+  res.send('K-Type Lookup API is running');
+});
+
+// K-Type lookup route
+app.get('/ktype/:ktype', async (req, res) => {
+  const ktype = req.params.ktype;
 
   try {
-    const response = await axios.post(
-      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-04/graphql.json`,
-      {
-        query: `
-          {
-            products(first: 10, query: "metafield:fitment.ktype:*${ktype}*") {
-              edges {
-                node {
-                  id
-                  title
-                  handle
-                  metafields(first: 5, namespace: "fitment", keys: ["ktype"]) {
-                    edges {
-                      node {
-                        key
-                        value
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        `
-      },
+    // Get all products (adjust limit if needed)
+    const response = await axios.get(
+      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-04/products.json`,
       {
         headers: {
-          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-          'Content-Type': 'application/json',
+          "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
+          "Content-Type": "application/json"
+        },
+        params: {
+          fields: 'id,title,handle',
+          limit: 250
         }
       }
     );
 
-    const products = response.data.data.products.edges.map(edge => edge.node);
-    res.status(200).json({ products });
+    const matchingProducts = [];
+
+    for (const product of response.data.products) {
+      try {
+        const metafieldsRes = await axios.get(
+          `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-04/products/${product.id}/metafields.json`,
+          {
+            headers: {
+              "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN
+            }
+          }
+        );
+
+        const fitmentField = metafieldsRes.data.metafields.find(
+          (m) => m.namespace === "fitment" && m.key === "ktype"
+        );
+
+        if (fitmentField && fitmentField.value.includes(ktype)) {
+          matchingProducts.push(product);
+        }
+      } catch (err) {
+        console.warn(`Skipping product ${product.id}:`, err.message);
+      }
+    }
+
+    return res.json({ products: matchingProducts });
 
   } catch (error) {
-    console.error('Shopify Error:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Failed to fetch from Shopify' });
+    console.error('Shopify error:', error.response?.data || error.message);
+    return res.status(500).json({ error: 'Failed to fetch from Shopify' });
   }
-};
+});
 
+app.listen(port, () => {
+  console.log(`Server is listening on port ${port}`);
+});
