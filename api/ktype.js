@@ -10,7 +10,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Get all products (paginated if needed later)
     const productResponse = await axios.get(
       `https://${shopDomain}/admin/api/2023-04/products.json`,
       {
@@ -27,7 +26,6 @@ export default async function handler(req, res) {
 
     const matchingProducts = [];
 
-    // 2. Loop through each product and fetch metafields
     for (const product of productResponse.data.products) {
       try {
         const metafieldsResponse = await axios.get(
